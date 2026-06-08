@@ -24,7 +24,7 @@
             <div>
                 <label for="quizSelect" class="block text-sm font-bold text-gray-700 mb-2">🎯 Select Quiz Module:</label>
                 <select id="quizSelect" class="w-full border border-gray-300 bg-gray-50 rounded-lg p-2.5 font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </select>
+                </select>
             </div>
             <div>
                 <label for="agentSelect" class="block text-sm font-bold text-gray-700 mb-2">👤 Filter by Agent Name:</label>
@@ -105,11 +105,10 @@
         const SPREADSHEET_LINK = 'https://docs.google.com/spreadsheets/d/1Gls7UT6AAR-clxwUHs2sClkQgsd0N_nuNPSkOXbE_eg/edit?usp=sharing';
         const PASSING_THRESHOLD = 70; 
         
-        // Add all your quizzes here. Just grab the "gid=" number from your browser URL bar!
+        // Exact spelling match to your sheet tabs shown in image_d9d6ba.png
         const QUIZ_MODULES = [
-            { name: "User Management Quiz", gid: "367262415" },  // <-- Your new active tab
-            { name: "Quiz Store manager", gid: "478411580" }, // <-- Your other data tab
-            { name: "Quiz scope of integration", gid: "460638264" }                       // <-- Default first tab (usually 0)
+            { name: "Quiz Store manager", gid: "367262415" },  
+            { name: "Quiz User Management", gid: "478411580" }
         ];
         // =========================================================
 
@@ -135,11 +134,12 @@
             });
         }
 
-        async function fetchQuizData(gidValue) {
+        // Added dynamic parameter handling to resolve force refresh caching errors
+        async function fetchQuizData(gidValue, isForced = false) {
             document.getElementById('lastUpdated').innerText = 'Streaming secure data lines...';
             
-            // Targets the sheet precisely using the immutable GID variable
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gidValue}`;
+            let cacheBuster = isForced ? `&t=${new Date().getTime()}` : '';
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gidValue}${cacheBuster}`;
 
             try {
                 const response = await fetch(url);
@@ -150,7 +150,7 @@
                 
                 processGoogleData(json);
             } catch (err) {
-                document.getElementById('lastUpdated').innerText = 'Connection Timeout. Verify Sheet is Shared to "Anyone with Link".';
+                document.getElementById('lastUpdated').innerText = 'Access Blocked. Please check Google App Permissions.';
                 console.error(err);
             }
         }
@@ -164,7 +164,6 @@
             let nameIndex = cols.findIndex(c => c && c.label && /full\s*name|name|agent/i.test(c.label));
             let scoreIndex = cols.findIndex(c => c && c.label && (/^score$/i.test(c.label.trim()) || /quiz\s*score|total\s*points/i.test(c.label)));
 
-            // Structural fallbacks to maintain consistency across dynamic generations
             if (nameIndex === -1) nameIndex = 2; 
             if (scoreIndex === -1) scoreIndex = 1; 
 
@@ -177,7 +176,10 @@
                     name: String(agentName).trim(),
                     rawScore: String(scoreVal).trim()
                 };
-            }).filter(item => item && item.name && !item.name.startsWith('Date(') && item.name.toLowerCase() !== 'full name');
+            }).filter(item => item && item.name && 
+                              !item.name.startsWith('Date(') && 
+                              item.name.toLowerCase() !== 'full name' && 
+                              !/^\d{1,2}\/\d{1,2}\/\d{4}/.test(item.name)); // Clears out dates appearing in agent list
 
             populateAgents(activeRawData);
             renderDashboard('all');
@@ -312,7 +314,11 @@
             fetchQuizData(e.target.value);
         });
         document.getElementById('agentSelect').addEventListener('change', (e) => renderDashboard(e.target.value));
-        document.getElementById('reloadBtn').addEventListener('click', () => fetchQuizData(document.getElementById('quizSelect').value));
+        
+        // Fixed: Added true context toggle to explicitly drop the API query data cache 
+        document.getElementById('reloadBtn').addEventListener('click', () => {
+            fetchQuizData(document.getElementById('quizSelect').value, true);
+        });
 
         // Core Initialize
         buildModuleDropdown();
