@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>L&D Smart Quiz Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-50 font-sans antialiased">
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">L&D Quiz Performance Dashboard</h1>
+                <p class="text-sm text-gray-500 mt-1" id="lastUpdated">Initializing automated sync...</p>
+            </div>
+            <button id="reloadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-5 rounded-lg shadow-sm flex items-center gap-2 transition hover:scale-[1.01]">
+                <span>🔄</span> Force Refresh
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+            <div>
+                <label for="quizSelect" class="block text-sm font-bold text-gray-700 mb-2">🎯 Select Quiz Module:</label>
+                <select id="quizSelect" class="w-full border border-gray-300 bg-gray-50 rounded-lg p-2.5 font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </select>
+            </div>
+            <div>
+                <label for="agentSelect" class="block text-sm font-bold text-gray-700 mb-2">👤 Filter by Agent Name:</label>
+                <select id="agentSelect" class="w-full border border-gray-300 bg-gray-50 rounded-lg p-2.5 font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="all">All Agents</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-gray-500 text-xs font-bold uppercase tracking-wider">Total Submissions</span>
+                <p id="kpiTotalTested" class="text-4xl font-extrabold text-gray-900 mt-2">0</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-gray-500 text-xs font-bold uppercase tracking-wider">Quiz Class Average</span>
+                <p id="kpiTeamAvg" class="text-4xl font-extrabold text-green-600 mt-2">0%</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <span class="text-gray-500 text-xs font-bold uppercase tracking-wider">Requires Retraining</span>
+                <p id="kpiRetrainCount" class="text-4xl font-extrabold text-red-500 mt-2">0</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 lg:col-span-2">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-gray-900" id="chartTitle">Agent Performance Summary</h3>
+                    <span class="text-xs text-gray-400 font-medium">Passing Score: 70%</span>
+                </div>
+                <div class="relative h-80 w-full">
+                    <canvas id="analyticsChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
+                <div class="mb-4">
+                    <h3 class="text-lg font-bold text-red-600 flex items-center gap-2">⚠️ Retraining Needed</h3>
+                    <p class="text-xs text-gray-500 mt-0.5">Agents scoring below 70% in this module.</p>
+                </div>
+                <div class="overflow-y-auto flex-grow max-h-80 border border-gray-100 rounded-lg">
+                    <table class="min-w-full bg-white text-left text-sm">
+                        <thead class="bg-gray-50 text-gray-500 font-semibold uppercase text-xs sticky top-0 border-b border-gray-100">
+                            <tr>
+                                <th class="py-3 px-4">Agent Name</th>
+                                <th class="py-3 px-4 text-right">Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="retrainingTable" class="text-gray-700 divide-y divide-gray-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Quiz Gradebook Logs</h3>
+            <div class="overflow-x-auto border border-gray-100 rounded-lg">
+                <table class="min-w-full bg-white text-left text-sm">
+                    <thead class="bg-gray-50 text-gray-600 font-semibold uppercase text-xs border-b border-gray-100">
+                        <tr>
+                            <th class="py-3 px-6">Agent Name</th>
+                            <th class="py-3 px-6">Raw Score Header</th>
+                            <th class="py-3 px-6 text-center">Calculated Percentage</th>
+                            <th class="py-3 px-6 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="masterTable" class="text-gray-700 divide-y divide-gray-100"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+    
+    <script>
+        // =========================================================
+        //  ⚙️ L&D MULTI-QUIZ CONFIGURATION (GID POWERED)
+        // =========================================================
+        const SPREADSHEET_LINK = 'https://docs.google.com/spreadsheets/d/1Gls7UT6AAR-clxwUHs2sClkQgsd0N_nuNPSkOXbE_eg/edit?usp=sharing';
+        const PASSING_THRESHOLD = 70; 
+        
+        // Add all your quizzes here. Just grab the "gid=" number from your browser URL bar!
+        const QUIZ_MODULES = [
+            { name: "User Management Quiz", gid: "367262415" },  // <-- Your new active tab
+            { name: "General Assessment Track 1", gid: "478411580" }, // <-- Your other data tab
+            { name: "Quiz Module 3", gid: "0" }                       // <-- Default first tab (usually 0)
+        ];
+        // =========================================================
+
+        let activeRawData = [];
+        let chartInstance = null;
+        let sheetId = '';
+
+        function extractSheetId(url) {
+            const matches = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            return matches ? matches[1] : '';
+        }
+
+        sheetId = extractSheetId(SPREADSHEET_LINK);
+
+        function buildModuleDropdown() {
+            const quizSelect = document.getElementById('quizSelect');
+            quizSelect.innerHTML = '';
+            QUIZ_MODULES.forEach(mod => {
+                let opt = document.createElement('option');
+                opt.value = mod.gid;
+                opt.textContent = mod.name; 
+                quizSelect.appendChild(opt);
+            });
+        }
+
+        async function fetchQuizData(gidValue) {
+            document.getElementById('lastUpdated').innerText = 'Streaming secure data lines...';
+            
+            // Targets the sheet precisely using the immutable GID variable
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gidValue}`;
+
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                
+                const jsonString = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+                const json = JSON.parse(jsonString);
+                
+                processGoogleData(json);
+            } catch (err) {
+                document.getElementById('lastUpdated').innerText = 'Connection Timeout. Verify Sheet is Shared to "Anyone with Link".';
+                console.error(err);
+            }
+        }
+
+        function processGoogleData(json) {
+            if (!json.table || !json.table.cols) return;
+            
+            const cols = json.table.cols;
+            const rows = json.table.rows || [];
+
+            let nameIndex = cols.findIndex(c => c && c.label && /full\s*name|name|agent/i.test(c.label));
+            let scoreIndex = cols.findIndex(c => c && c.label && (/^score$/i.test(c.label.trim()) || /quiz\s*score|total\s*points/i.test(c.label)));
+
+            // Structural fallbacks to maintain consistency across dynamic generations
+            if (nameIndex === -1) nameIndex = 2; 
+            if (scoreIndex === -1) scoreIndex = 1; 
+
+            activeRawData = rows.map(r => {
+                if (!r || !r.c) return null;
+                let agentName = r.c[nameIndex] ? (r.c[nameIndex].f || r.c[nameIndex].v) : '';
+                let scoreVal = r.c[scoreIndex] ? (r.c[scoreIndex].f || r.c[scoreIndex].v) : '0';
+                
+                return {
+                    name: String(agentName).trim(),
+                    rawScore: String(scoreVal).trim()
+                };
+            }).filter(item => item && item.name && !item.name.startsWith('Date(') && item.name.toLowerCase() !== 'full name');
+
+            populateAgents(activeRawData);
+            renderDashboard('all');
+        }
+
+        function populateAgents(data) {
+            const agentSelect = document.getElementById('agentSelect');
+            const currentSelection = agentSelect.value;
+            
+            const agents = [...new Set(data.map(row => row.name))].filter(Boolean);
+            
+            agentSelect.innerHTML = '<option value="all">All Agents</option>';
+            agents.forEach(agent => {
+                const option = document.createElement('option');
+                option.value = agent;
+                option.textContent = agent;
+                agentSelect.appendChild(option);
+            });
+
+            if (agents.includes(currentSelection)) agentSelect.value = currentSelection;
+        }
+
+        function calculatePercentage(scoreValue) {
+            if (!scoreValue || scoreValue === 'null') return 0;
+            
+            if (scoreValue.includes('/')) {
+                let segment = scoreValue.split('/');
+                let scored = parseFloat(segment[0]);
+                let total = parseFloat(segment[1]);
+                return total > 0 ? (scored / total) * 100 : 0;
+            }
+            
+            let numeric = parseFloat(scoreValue.replace('%', ''));
+            return isNaN(numeric) ? 0 : numeric;
+        }
+
+        function renderDashboard(filterAgent) {
+            let runningSum = 0, retrainCount = 0, processedRecords = [];
+
+            let targetData = filterAgent === 'all' 
+                ? activeRawData 
+                : activeRawData.filter(row => row.name === filterAgent);
+
+            activeRawData.forEach(row => {
+                if(calculatePercentage(row.rawScore) < PASSING_THRESHOLD) retrainCount++;
+            });
+
+            targetData.forEach(row => {
+                let percent = calculatePercentage(row.rawScore);
+                runningSum += percent;
+
+                processedRecords.push({
+                    name: row.name,
+                    raw: row.rawScore,
+                    percentage: percent
+                });
+            });
+
+            let totalCount = processedRecords.length;
+            document.getElementById('kpiTotalTested').innerText = filterAgent === 'all' ? totalCount : 1;
+            document.getElementById('kpiTeamAvg').innerText = totalCount > 0 ? (runningSum / totalCount).toFixed(1) + '%' : '0%';
+            document.getElementById('kpiRetrainCount').innerText = filterAgent === 'all' ? retrainCount : ((runningSum / totalCount) < PASSING_THRESHOLD ? 1 : 0);
+            
+            const quizSelect = document.getElementById('quizSelect');
+            const currentTabLabel = quizSelect.options[quizSelect.selectedIndex]?.text || 'Quiz Module';
+            document.getElementById('chartTitle').innerText = `${currentTabLabel} - Performance Breakdown`;
+            document.getElementById('lastUpdated').innerText = `Live Update Sync: ${new Date().toLocaleTimeString()}`;
+
+            renderChart(processedRecords);
+            renderTables(processedRecords);
+        }
+
+        function renderChart(dataset) {
+            const ctx = document.getElementById('analyticsChart').getContext('2d');
+            if(chartInstance) chartInstance.destroy();
+
+            chartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: dataset.map(d => d.name),
+                    datasets: [{
+                        data: dataset.map(d => d.percentage.toFixed(1)),
+                        backgroundColor: dataset.map(d => d.percentage >= PASSING_THRESHOLD ? '#3b82f6' : '#ef4444'),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        y: { min: 0, max: 100, ticks: { callback: val => val + '%' } }, 
+                        x: { grid: { display: false } } 
+                    }
+                }
+            });
+        }
+
+        function renderTables(dataset) {
+            const retrainBody = document.getElementById('retrainingTable');
+            const masterBody = document.getElementById('masterTable');
+            retrainBody.innerHTML = ''; masterBody.innerHTML = '';
+
+            let lowPerformers = activeRawData.map(row => ({
+                name: row.name,
+                percentage: calculatePercentage(row.rawScore)
+            })).filter(d => d.percentage < PASSING_THRESHOLD);
+
+            if (lowPerformers.length === 0) {
+                retrainBody.innerHTML = `<tr><td colspan="2" class="py-6 text-center text-gray-400 italic">No retraining flags found.</td></tr>`;
+            } else {
+                lowPerformers.forEach(d => {
+                    retrainBody.innerHTML += `<tr><td class="py-3 px-4 font-semibold text-gray-900">${d.name}</td><td class="py-3 px-4 text-right font-bold text-red-500">${d.percentage.toFixed(1)}%</td></tr>`;
+                });
+            }
+
+            dataset.forEach(d => {
+                let passed = d.percentage >= PASSING_THRESHOLD;
+                masterBody.innerHTML += `
+                    <tr class="hover:bg-gray-50/70 transition-colors">
+                        <td class="py-3.5 px-6 font-medium text-gray-900">${d.name}</td>
+                        <td class="py-3.5 px-6 text-gray-500">${d.raw}</td>
+                        <td class="py-3.5 px-6 text-center font-bold ${passed ? 'text-blue-600' : 'text-red-500'}">${d.percentage.toFixed(1)}%</td>
+                        <td class="py-3.5 px-6 text-center"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${passed ? 'Passed' : 'Retrain'}</span></td>
+                    </tr>`;
+            });
+        }
+
+        // Action Handlers
+        document.getElementById('quizSelect').addEventListener('change', (e) => {
+            document.getElementById('agentSelect').value = 'all';
+            fetchQuizData(e.target.value);
+        });
+        document.getElementById('agentSelect').addEventListener('change', (e) => renderDashboard(e.target.value));
+        document.getElementById('reloadBtn').addEventListener('click', () => fetchQuizData(document.getElementById('quizSelect').value));
+
+        // Core Initialize
+        buildModuleDropdown();
+        fetchQuizData(QUIZ_MODULES[0].gid);
+    </script>
+</body>
+</html>
