@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>L&D Smart Quiz Dashboard</title>
+    <title>L&D Smart Quiz & Assignment Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -12,7 +12,7 @@
         
         <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <div>
-                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">L&D Quiz Performance Dashboard</h1>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">L&D Quiz & Assignment Performance Dashboard</h1>
                 <p class="text-sm text-gray-500 mt-1" id="lastUpdated">Initializing automated sync...</p>
             </div>
             <button id="reloadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-5 rounded-lg shadow-sm flex items-center gap-2 transition hover:scale-[1.01]">
@@ -22,7 +22,7 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-100">
             <div>
-                <label for="quizSelect" class="block text-sm font-bold text-gray-700 mb-2">🎯 Select Quiz Module:</label>
+                <label for="quizSelect" class="block text-sm font-bold text-gray-700 mb-2">🎯 Select Module (Quiz / Assignment):</label>
                 <select id="quizSelect" class="w-full border border-gray-300 bg-gray-50 rounded-lg p-2.5 font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </select>
             </div>
@@ -40,7 +40,7 @@
                 <p id="kpiTotalTested" class="text-4xl font-extrabold text-gray-900 mt-2">0</p>
             </div>
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
-                <span class="text-gray-500 text-xs font-bold uppercase tracking-wider">Quiz Class Average</span>
+                <span class="text-gray-500 text-xs font-bold uppercase tracking-wider">Class Average</span>
                 <p id="kpiTeamAvg" class="text-4xl font-extrabold text-green-600 mt-2">0%</p>
             </div>
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
@@ -80,13 +80,13 @@
         </div>
 
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-8">
-            <h3 class="text-lg font-bold text-gray-900 mb-4">Quiz Gradebook Logs</h3>
+            <h3 class="text-lg font-bold text-gray-900 mb-4">Gradebook Logs</h3>
             <div class="overflow-x-auto border border-gray-100 rounded-lg">
                 <table class="min-w-full bg-white text-left text-sm">
                     <thead class="bg-gray-50 text-gray-600 font-semibold uppercase text-xs border-b border-gray-100">
                         <tr>
                             <th class="py-3 px-6">Agent Name</th>
-                            <th class="py-3 px-6">Raw Score Header</th>
+                            <th class="py-3 px-6" id="rawScoreHeader">Raw Score</th>
                             <th class="py-3 px-6 text-center">Calculated Percentage</th>
                             <th class="py-3 px-6 text-center">Status</th>
                         </tr>
@@ -100,35 +100,34 @@
     
     <script>
         // =========================================================
-        //  ⚙️ L&D MULTI-QUIZ CONFIGURATION (GID POWERED)
+        //  ⚙️ MULTI-SPREADSHEET MODULE CONFIGURATION
         // =========================================================
-        const SPREADSHEET_LINK = 'https://docs.google.com/spreadsheets/d/1Gls7UT6AAR-clxwUHs2sClkQgsd0N_nuNPSkOXbE_eg/edit?usp=sharing';
+        const DEFAULT_SPREADSHEET_LINK = 'https://docs.google.com/spreadsheets/d/1Gls7UT6AAR-clxwUHs2sClkQgsd0N_nuNPSkOXbE_eg/edit?usp=sharing';
         const PASSING_THRESHOLD = 70; 
         
-        // Exact spelling match to your sheet tabs shown in image_d9d6ba.png
-        const QUIZ_MODULES = [
-            { name: "Quiz Store manager", gid: "367262415" },  
-            { name: "Quiz User Management", gid: "478411580" },
-            { name: "Quiz scope of integration", gid: "460638264" },
-            { name: "Quiz-Upstream integration", gid: "1517549802" } 
+        // If sheetId is left empty "", it defaults to the main quiz sheet link above.
+        // If an assignment lives on a DIFFERENT sheet file, paste its file ID into sheetId.
+        const MODULES = [
+            { name: "Quiz Store manager", gid: "367262415", sheetId: "" },  
+            { name: "Quiz User Management", gid: "478411580", sheetId: "" },
+            { name: "Assignment - Logs Analysis", gid: "0", sheetId: "YOUR_SEPARATE_ASSIGNMENT_SPREADSHEET_ID_HERE" } 
         ];
         // =========================================================
 
         let activeRawData = [];
         let chartInstance = null;
-        let sheetId = '';
+        let defaultSheetId = extractSheetId(DEFAULT_SPREADSHEET_LINK);
+        let isCurrentModuleAssignment = false;
 
         function extractSheetId(url) {
             const matches = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
             return matches ? matches[1] : '';
         }
 
-        sheetId = extractSheetId(SPREADSHEET_LINK);
-
         function buildModuleDropdown() {
             const quizSelect = document.getElementById('quizSelect');
             quizSelect.innerHTML = '';
-            QUIZ_MODULES.forEach(mod => {
+            MODULES.forEach(mod => {
                 let opt = document.createElement('option');
                 opt.value = mod.gid;
                 opt.textContent = mod.name; 
@@ -136,12 +135,20 @@
             });
         }
 
-        // Added dynamic parameter handling to resolve force refresh caching errors
-        async function fetchQuizData(gidValue, isForced = false) {
+        async function fetchModuleData(gidValue, isForced = false) {
             document.getElementById('lastUpdated').innerText = 'Streaming secure data lines...';
             
+            const selectedModule = MODULES.find(m => m.gid === gidValue);
+            isCurrentModuleAssignment = selectedModule ? selectedModule.name.toLowerCase().includes('assignment') : false;
+
+            // Dynamically updates UI header column types
+            document.getElementById('rawScoreHeader').innerText = isCurrentModuleAssignment ? "Score (Out of 5)" : "Raw Score Header";
+            
+            // Decides whether to use the customized assignment spreadsheet ID or fallback to the quiz sheet ID
+            let currentSheetId = (selectedModule && selectedModule.sheetId !== "") ? selectedModule.sheetId : defaultSheetId;
+            
             let cacheBuster = isForced ? `&t=${new Date().getTime()}` : '';
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&gid=${gidValue}${cacheBuster}`;
+            const url = `https://docs.google.com/spreadsheets/d/${currentSheetId}/gviz/tq?tqx=out:json&gid=${gidValue}${cacheBuster}`;
 
             try {
                 const response = await fetch(url);
@@ -152,7 +159,7 @@
                 
                 processGoogleData(json);
             } catch (err) {
-                document.getElementById('lastUpdated').innerText = 'Access Blocked. Please check Google App Permissions.';
+                document.getElementById('lastUpdated').innerText = 'Access Blocked. Verify Google Web-Publishing permissions.';
                 console.error(err);
             }
         }
@@ -163,11 +170,11 @@
             const cols = json.table.cols;
             const rows = json.table.rows || [];
 
-            let nameIndex = cols.findIndex(c => c && c.label && /full\s*name|name|agent/i.test(c.label));
-            let scoreIndex = cols.findIndex(c => c && c.label && (/^score$/i.test(c.label.trim()) || /quiz\s*score|total\s*points/i.test(c.label)));
+            let nameIndex = cols.findIndex(c => c && c.label && /name|agent/i.test(c.label));
+            let scoreIndex = cols.findIndex(c => c && c.label && /score|marks|point/i.test(c.label));
 
-            if (nameIndex === -1) nameIndex = 2; 
-            if (scoreIndex === -1) scoreIndex = 1; 
+            if (nameIndex === -1) nameIndex = 0; 
+            if (scoreIndex === -1) scoreIndex = 2; 
 
             activeRawData = rows.map(r => {
                 if (!r || !r.c) return null;
@@ -179,9 +186,10 @@
                     rawScore: String(scoreVal).trim()
                 };
             }).filter(item => item && item.name && 
-                              !item.name.startsWith('Date(') && 
+                              item.name.toLowerCase() !== 'name' &&
                               item.name.toLowerCase() !== 'full name' && 
-                              !/^\d{1,2}\/\d{1,2}\/\d{4}/.test(item.name)); // Clears out dates appearing in agent list
+                              !item.name.startsWith('Date(') &&
+                              !/^\d{1,2}\/\d{1,2}\/\d{4}/.test(item.name));
 
             populateAgents(activeRawData);
             renderDashboard('all');
@@ -205,7 +213,7 @@
         }
 
         function calculatePercentage(scoreValue) {
-            if (!scoreValue || scoreValue === 'null') return 0;
+            if (!scoreValue || scoreValue === 'null' || scoreValue === '') return 0;
             
             if (scoreValue.includes('/')) {
                 let segment = scoreValue.split('/');
@@ -215,7 +223,13 @@
             }
             
             let numeric = parseFloat(scoreValue.replace('%', ''));
-            return isNaN(numeric) ? 0 : numeric;
+            if (isNaN(numeric)) return 0;
+
+            if (isCurrentModuleAssignment) {
+                return (numeric / 5) * 100;
+            }
+
+            return numeric;
         }
 
         function renderDashboard(filterAgent) {
@@ -246,7 +260,7 @@
             document.getElementById('kpiRetrainCount').innerText = filterAgent === 'all' ? retrainCount : ((runningSum / totalCount) < PASSING_THRESHOLD ? 1 : 0);
             
             const quizSelect = document.getElementById('quizSelect');
-            const currentTabLabel = quizSelect.options[quizSelect.selectedIndex]?.text || 'Quiz Module';
+            const currentTabLabel = quizSelect.options[quizSelect.selectedIndex]?.text || 'Module';
             document.getElementById('chartTitle').innerText = `${currentTabLabel} - Performance Breakdown`;
             document.getElementById('lastUpdated').innerText = `Live Update Sync: ${new Date().toLocaleTimeString()}`;
 
@@ -313,18 +327,17 @@
         // Action Handlers
         document.getElementById('quizSelect').addEventListener('change', (e) => {
             document.getElementById('agentSelect').value = 'all';
-            fetchQuizData(e.target.value);
+            fetchModuleData(e.target.value);
         });
         document.getElementById('agentSelect').addEventListener('change', (e) => renderDashboard(e.target.value));
         
-        // Fixed: Added true context toggle to explicitly drop the API query data cache 
         document.getElementById('reloadBtn').addEventListener('click', () => {
-            fetchQuizData(document.getElementById('quizSelect').value, true);
+            fetchModuleData(document.getElementById('quizSelect').value, true);
         });
 
         // Core Initialize
         buildModuleDropdown();
-        fetchQuizData(QUIZ_MODULES[0].gid);
+        fetchModuleData(MODULES[0].gid);
     </script>
 </body>
 </html>
