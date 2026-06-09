@@ -3,27 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>L&D Smart Quiz & Assignment Dashboard</title>
+    <title>L&D Core Performance Workspace</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-gray-50 font-sans antialiased">
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
         
-        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <div>
-                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">L&D Quiz & Assignment Performance Dashboard</h1>
-                <p class="text-sm text-gray-500 mt-1" id="lastUpdated">Initializing automated sync...</p>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">L&D Performance Workspace</h1>
+                <p class="text-sm text-gray-500 mt-1" id="lastUpdated">Initializing tracking modules...</p>
             </div>
             <button id="reloadBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-5 rounded-lg shadow-sm flex items-center gap-2 transition hover:scale-[1.01]">
                 <span>🔄</span> Force Refresh
             </button>
         </header>
 
+        <div class="flex border-b border-gray-200 mb-6 gap-2">
+            <button id="tabQuiz" class="py-3 px-6 font-bold text-sm tracking-wide rounded-t-lg transition border-b-2 border-blue-600 text-blue-600 bg-white shadow-sm">
+                📝 Quiz Performance
+            </button>
+            <button id="tabAssignment" class="py-3 px-6 font-bold text-sm tracking-wide rounded-t-lg transition border-b-2 border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50">
+                🎯 Assignment Scores
+            </button>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-white p-5 rounded-xl shadow-sm border border-gray-100">
             <div>
-                <label for="quizSelect" class="block text-sm font-bold text-gray-700 mb-2">🎯 Select Module (Quiz / Assignment):</label>
-                <select id="quizSelect" class="w-full border border-gray-300 bg-gray-50 rounded-lg p-2.5 font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label id="selectLabel" for="moduleSelect" class="block text-sm font-bold text-gray-700 mb-2">🎯 Select Quiz Module:</label>
+                <select id="moduleSelect" class="w-full border border-gray-300 bg-gray-50 rounded-lg p-2.5 font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </select>
             </div>
             <div>
@@ -40,7 +49,7 @@
                 <p id="kpiTotalTested" class="text-4xl font-extrabold text-gray-900 mt-2">0</p>
             </div>
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
-                <span class="text-gray-500 text-xs font-bold uppercase tracking-wider">Class Average</span>
+                <span id="kpiAvgLabel" class="text-gray-500 text-xs font-bold uppercase tracking-wider">Quiz Class Average</span>
                 <p id="kpiTeamAvg" class="text-4xl font-extrabold text-green-600 mt-2">0%</p>
             </div>
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-between">
@@ -80,13 +89,13 @@
         </div>
 
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mt-8">
-            <h3 class="text-lg font-bold text-gray-900 mb-4">Gradebook Logs</h3>
+            <h3 id="tableTitle" class="text-lg font-bold text-gray-900 mb-4">Quiz Gradebook Logs</h3>
             <div class="overflow-x-auto border border-gray-100 rounded-lg">
                 <table class="min-w-full bg-white text-left text-sm">
                     <thead class="bg-gray-50 text-gray-600 font-semibold uppercase text-xs border-b border-gray-100">
                         <tr>
                             <th class="py-3 px-6">Agent Name</th>
-                            <th class="py-3 px-6" id="rawScoreHeader">Raw Score</th>
+                            <th class="py-3 px-6" id="rawScoreHeader">Raw Score Header</th>
                             <th class="py-3 px-6 text-center">Calculated Percentage</th>
                             <th class="py-3 px-6 text-center">Status</th>
                         </tr>
@@ -100,66 +109,86 @@
     
     <script>
         // =========================================================
-        //  ⚙️ MULTI-SPREADSHEET MODULE CONFIGURATION
+        //  ⚙️ L&D SEPARATED WORKSPACE STRUCTURE CONFIGURATION
         // =========================================================
-        const DEFAULT_SPREADSHEET_LINK = 'https://docs.google.com/spreadsheets/d/1Gls7UT6AAR-clxwUHs2sClkQgsd0N_nuNPSkOXbE_eg/edit?usp=sharing';
-        const PASSING_THRESHOLD = 70; 
+        const QUIZ_SPREADSHEET_ID = "1Gls7UT6AAR-clxwUHs2sClkQgsd0N_nuNPSkOXbE_eg";
+        const ASSIGNMENT_SPREADSHEET_ID = "1rTSN9SGVRxkHLEkKCrTZ7t1qrO125pWHxfL4J9OMBzc";
         
-        // If sheetId is left empty "", it defaults to the main quiz sheet link above.
-        // If an assignment lives on a DIFFERENT sheet file, paste its file ID into sheetId.
-        const MODULES = [
-            { name: "Quiz Store manager", gid: "367262415", sheetId: "" },  
-            { name: "Quiz User Management", gid: "478411580", sheetId: "" },
-            { name: "Assignment - Logs Analysis", gid: "0", sheetId: "YOUR_SEPARATE_ASSIGNMENT_SPREADSHEET_ID_HERE" } 
+        const PASSING_THRESHOLD = 70; 
+
+        // Separated array groups to balance views completely cleanly
+        const QUIZ_MODULES = [
+            { name: "Quiz Store manager", gid: "367262415" },  
+            { name: "Quiz User Management", gid: "478411580" }
+        ];
+
+        const ASSIGNMENT_MODULES = [
+            { name: "Topic - logs Analysis", gid: "0" }, // Put correct GIDs here
+            { name: "Topic - Menu structure", gid: "CHANGEME_GID" }
         ];
         // =========================================================
 
+        let currentTab = 'QUIZ'; // Tracks context landscape states: 'QUIZ' or 'ASSIGNMENT'
         let activeRawData = [];
         let chartInstance = null;
-        let defaultSheetId = extractSheetId(DEFAULT_SPREADSHEET_LINK);
-        let isCurrentModuleAssignment = false;
 
-        function extractSheetId(url) {
-            const matches = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-            return matches ? matches[1] : '';
+        function buildDropdown() {
+            const moduleSelect = document.getElementById('moduleSelect');
+            const selectLabel = document.getElementById('selectLabel');
+            const tableTitle = document.getElementById('tableTitle');
+            const kpiAvgLabel = document.getElementById('kpiAvgLabel');
+            const rawHeader = document.getElementById('rawScoreHeader');
+            
+            moduleSelect.innerHTML = '';
+            
+            // Adjust texts and fill options based on selected view mode
+            if (currentTab === 'QUIZ') {
+                selectLabel.innerText = "🎯 Select Quiz Module:";
+                tableTitle.innerText = "Quiz Gradebook Logs";
+                kpiAvgLabel.innerText = "Quiz Class Average";
+                rawHeader.innerText = "Raw Score Header";
+                
+                QUIZ_MODULES.forEach(mod => {
+                    let opt = document.createElement('option');
+                    opt.value = mod.gid;
+                    opt.textContent = mod.name;
+                    moduleSelect.appendChild(opt);
+                });
+            } else {
+                selectLabel.innerText = "🎯 Select Assignment Topic:";
+                tableTitle.innerText = "Assignment Scoring Logs";
+                kpiAvgLabel.innerText = "Assignment Average";
+                rawHeader.innerText = "Marks out of 5";
+                
+                ASSIGNMENT_MODULES.forEach(mod => {
+                    let opt = document.createElement('option');
+                    opt.value = mod.gid;
+                    opt.textContent = mod.name;
+                    moduleSelect.appendChild(opt);
+                });
+            }
+            
+            if(moduleSelect.options.length > 0) {
+                fetchSheetStream(moduleSelect.value);
+            }
         }
 
-        function buildModuleDropdown() {
-            const quizSelect = document.getElementById('quizSelect');
-            quizSelect.innerHTML = '';
-            MODULES.forEach(mod => {
-                let opt = document.createElement('option');
-                opt.value = mod.gid;
-                opt.textContent = mod.name; 
-                quizSelect.appendChild(opt);
-            });
-        }
-
-        async function fetchModuleData(gidValue, isForced = false) {
+        async function fetchSheetStream(gidValue, isForced = false) {
             document.getElementById('lastUpdated').innerText = 'Streaming secure data lines...';
             
-            const selectedModule = MODULES.find(m => m.gid === gidValue);
-            isCurrentModuleAssignment = selectedModule ? selectedModule.name.toLowerCase().includes('assignment') : false;
-
-            // Dynamically updates UI header column types
-            document.getElementById('rawScoreHeader').innerText = isCurrentModuleAssignment ? "Score (Out of 5)" : "Raw Score Header";
-            
-            // Decides whether to use the customized assignment spreadsheet ID or fallback to the quiz sheet ID
-            let currentSheetId = (selectedModule && selectedModule.sheetId !== "") ? selectedModule.sheetId : defaultSheetId;
-            
+            let targetSheetId = (currentTab === 'QUIZ') ? QUIZ_SPREADSHEET_ID : ASSIGNMENT_SPREADSHEET_ID;
             let cacheBuster = isForced ? `&t=${new Date().getTime()}` : '';
-            const url = `https://docs.google.com/spreadsheets/d/${currentSheetId}/gviz/tq?tqx=out:json&gid=${gidValue}${cacheBuster}`;
+            
+            const url = `https://docs.google.com/spreadsheets/d/${targetSheetId}/gviz/tq?tqx=out:json&gid=${gidValue}${cacheBuster}`;
 
             try {
                 const response = await fetch(url);
                 const text = await response.text();
-                
                 const jsonString = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
                 const json = JSON.parse(jsonString);
-                
                 processGoogleData(json);
             } catch (err) {
-                document.getElementById('lastUpdated').innerText = 'Access Blocked. Verify Google Web-Publishing permissions.';
+                document.getElementById('lastUpdated').innerText = 'Access Blocked. Verify publishing properties.';
                 console.error(err);
             }
         }
@@ -170,11 +199,12 @@
             const cols = json.table.cols;
             const rows = json.table.rows || [];
 
+            // Context-based indexing lookups
             let nameIndex = cols.findIndex(c => c && c.label && /name|agent/i.test(c.label));
             let scoreIndex = cols.findIndex(c => c && c.label && /score|marks|point/i.test(c.label));
 
             if (nameIndex === -1) nameIndex = 0; 
-            if (scoreIndex === -1) scoreIndex = 2; 
+            if (scoreIndex === -1) scoreIndex = (currentTab === 'QUIZ') ? 1 : 2; 
 
             activeRawData = rows.map(r => {
                 if (!r || !r.c) return null;
@@ -198,7 +228,6 @@
         function populateAgents(data) {
             const agentSelect = document.getElementById('agentSelect');
             const currentSelection = agentSelect.value;
-            
             const agents = [...new Set(data.map(row => row.name))].filter(Boolean);
             
             agentSelect.innerHTML = '<option value="all">All Agents</option>';
@@ -225,7 +254,8 @@
             let numeric = parseFloat(scoreValue.replace('%', ''));
             if (isNaN(numeric)) return 0;
 
-            if (isCurrentModuleAssignment) {
+            // Normalize assignment marks graded out of 5 to full 100% scales
+            if (currentTab === 'ASSIGNMENT') {
                 return (numeric / 5) * 100;
             }
 
@@ -259,8 +289,8 @@
             document.getElementById('kpiTeamAvg').innerText = totalCount > 0 ? (runningSum / totalCount).toFixed(1) + '%' : '0%';
             document.getElementById('kpiRetrainCount').innerText = filterAgent === 'all' ? retrainCount : ((runningSum / totalCount) < PASSING_THRESHOLD ? 1 : 0);
             
-            const quizSelect = document.getElementById('quizSelect');
-            const currentTabLabel = quizSelect.options[quizSelect.selectedIndex]?.text || 'Module';
+            const moduleSelect = document.getElementById('moduleSelect');
+            const currentTabLabel = moduleSelect.options[moduleSelect.selectedIndex]?.text || 'Module';
             document.getElementById('chartTitle').innerText = `${currentTabLabel} - Performance Breakdown`;
             document.getElementById('lastUpdated').innerText = `Live Update Sync: ${new Date().toLocaleTimeString()}`;
 
@@ -324,20 +354,45 @@
             });
         }
 
-        // Action Handlers
-        document.getElementById('quizSelect').addEventListener('change', (e) => {
+        // --- Core Base View Switching Controls ---
+        const btnQuiz = document.getElementById('tabQuiz');
+        const btnAssignment = document.getElementById('tabAssignment');
+
+        btnQuiz.addEventListener('click', () => {
+            if(currentTab === 'QUIZ') return;
+            currentTab = 'QUIZ';
+            
+            btnQuiz.className = "py-3 px-6 font-bold text-sm tracking-wide rounded-t-lg transition border-b-2 border-blue-600 text-blue-600 bg-white shadow-sm";
+            btnAssignment.className = "py-3 px-6 font-bold text-sm tracking-wide rounded-t-lg transition border-b-2 border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50";
+            
             document.getElementById('agentSelect').value = 'all';
-            fetchModuleData(e.target.value);
+            buildDropdown();
         });
+
+        btnAssignment.addEventListener('click', () => {
+            if(currentTab === 'ASSIGNMENT') return;
+            currentTab = 'ASSIGNMENT';
+            
+            btnAssignment.className = "py-3 px-6 font-bold text-sm tracking-wide rounded-t-lg transition border-b-2 border-blue-600 text-blue-600 bg-white shadow-sm";
+            btnQuiz.className = "py-3 px-6 font-bold text-sm tracking-wide rounded-t-lg transition border-b-2 border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50";
+            
+            document.getElementById('agentSelect').value = 'all';
+            buildDropdown();
+        });
+
+        document.getElementById('moduleSelect').addEventListener('change', (e) => {
+            document.getElementById('agentSelect').value = 'all';
+            fetchSheetStream(e.target.value);
+        });
+        
         document.getElementById('agentSelect').addEventListener('change', (e) => renderDashboard(e.target.value));
         
         document.getElementById('reloadBtn').addEventListener('click', () => {
-            fetchModuleData(document.getElementById('quizSelect').value, true);
+            fetchSheetStream(document.getElementById('moduleSelect').value, true);
         });
 
-        // Core Initialize
-        buildModuleDropdown();
-        fetchModuleData(MODULES[0].gid);
+        // Initialize Work Environment
+        buildDropdown();
     </script>
 </body>
 </html>
